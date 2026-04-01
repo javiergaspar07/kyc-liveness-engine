@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>KYC Liveness Tester</title>
+    <style>
+        body { font-family: monospace; background: #121212; color: #00ff00; padding: 20px; }
+        video { border: 2px solid #333; border-radius: 8px; }
+        #log { margin-top: 15px; padding: 10px; background: #000; border: 1px solid #333; height: 100px; overflow-y: scroll; }
+    </style>
+</head>
+<body>
+    <h2>KYC Stream Validation</h2>
+    
+    <video id="videoFeed" width="400" height="300" autoplay muted></video>
+    
+    <div id="log">Awaiting connection...</div>
+
+    <script>
+        const video = document.getElementById('videoFeed');
+        const logPanel = document.getElementById('log');
+        
+        // Hidden canvas to extract image frames
+        const canvas = document.createElement('canvas');
+        canvas.width = 400; canvas.height = 300;
+        const ctx = canvas.getContext('2d');
+
+        // Connect to the local FastAPI WebSocket
+        const ws = new WebSocket('ws://localhost:8000/ws/v1/kyc/liveness-stream');
+
+        ws.onopen = async () => {
+            logPanel.innerHTML += "<br>> 🟢 WebSocket Connected.";
+            
+            // Request camera permissions
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            video.srcObject = stream;
+
+            // Capture and send a frame every 100ms (10 FPS)
+            setInterval(() => {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                // Convert canvas to binary Blob and send to backend
+                canvas.toBlob(blob => {
+                    if (ws.readyState === WebSocket.OPEN) ws.send(blob);
+                }, 'image/jpeg', 0.8);
+            }, 100);
+        };
+
+        // Listen for AI decisions from the backend
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            logPanel.innerHTML = `<br>> 🤖 [${data.status.toUpperCase()}]: ${data.message} ${data.confidence ? '| Score: ' + data.confidence : ''}` + logPanel.innerHTML;
+        };
+
+        ws.onerror = () => logPanel.innerHTML += "<br>> 🔴 WebSocket Error.";
+    </script>
+</body>
+</html>

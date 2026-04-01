@@ -1,0 +1,37 @@
+# Machine Learning Models
+*.pth
+*.tflite
+*.pt
+*.onnx
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+.conda/
+miniconda3/
+
+# Environment Variables / Secrets
+.env
+.env.local
+
+# IDEs and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Datasets and Media
+data/
+dataset/
+datasets/
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.avi
