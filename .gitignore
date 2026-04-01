@@ -1,5 +1,6 @@
 # Machine Learning Models
 *.pth
+*.task
 *.tflite
 *.pt
 *.onnx

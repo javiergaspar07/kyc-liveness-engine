@@ -1,40 +1,19 @@
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import cv2
-import numpy as np
 import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-import timm
-import torchvision.transforms as transforms
+import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.transforms as transforms
 
-app = FastAPI(title="KYC Liveness Engine")
-
-# Initialize MediaPipe Face Detection (Modern Tasks API)
-base_options = python.BaseOptions(model_asset_path='blaze_face_short_range.tflite')
-options = vision.FaceDetectorOptions(base_options=base_options, min_detection_confidence=0.7)
-face_detector = vision.FaceDetector.create_from_options(options)
-
-# Set up device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# 1. Rebuild the exact same skeleton (without downloading ImageNet weights)
-model = timm.create_model("efficientnet_b0", pretrained=False)
-num_in_features = model.get_classifier().in_features
-model.classifier = nn.Linear(num_in_features, 2)
-
-# 2. Load the trained weights from disk
-model.load_state_dict(torch.load("liveness_efficientnet.pth", map_location=device))
-
-# 3. Set the model to evaluation mode (disables dropout and batch normalization updates)
-model.eval()
-model = model.to(device)
+from ml.models_manager import ml_manager
 
 CONFIDENCE_THRESHOLD = 0.85
 
-@app.websocket("/ws/v1/kyc/liveness-stream")
+router = APIRouter()
+
+
+@router.websocket("/ws/v1/kyc/liveness-stream")
 async def liveness_stream(websocket: WebSocket):
     await websocket.accept()
     frame_count = 0 # Counter to manage frame sampling
@@ -56,7 +35,7 @@ async def liveness_stream(websocket: WebSocket):
             # Phase 1: Face Detection (Gatekeeper)
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
-            results = face_detector.detect(mp_image)
+            results = ml_manager.face_detector.detect(mp_image)
 
             if not results.detections:
                 await websocket.send_json({"status": "error", "message": "No face detected"})
@@ -102,11 +81,11 @@ async def liveness_stream(websocket: WebSocket):
             # 2. Transformation 📐
             face_tensor = inference_transforms(face_crop)
             # Add a batch dimension to match model's expected input shape: [1, 3, 224, 224]
-            face_tensor = face_tensor.unsqueeze(0).to(device)
+            face_tensor = face_tensor.unsqueeze(0).to(ml_manager.device)
 
             # 3. Inference 🧠
             with torch.no_grad():
-                outputs = model(face_tensor)
+                outputs = ml_manager.liveness_model(face_tensor)
     
                 # Apply Softmax to get readable probabilities
                 probabilities = F.softmax(outputs, dim=1)

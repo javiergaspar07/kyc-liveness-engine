@@ -26,7 +26,7 @@
         const ctx = canvas.getContext('2d');
 
         // Connect to the local FastAPI WebSocket
-        const ws = new WebSocket('ws://localhost:8000/ws/v1/kyc/liveness-stream');
+        const ws = new WebSocket('ws://localhost:8000/ws/v2/kyc/active-liveness');
 
         ws.onopen = async () => {
             logPanel.innerHTML += "<br>> 🟢 WebSocket Connected.";
