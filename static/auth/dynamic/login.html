@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Biometric Login</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+            margin: 0;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+        }
+        .video-wrapper {
+            position: relative;
+            margin: 1.5rem 0;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+        video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1); /* Mirror effect for natural feeling */
+        }
+        .instruction-overlay {
+            position: absolute;
+            bottom: 10%;
+            left: 5%;
+            right: 5%;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            display: none;
+        }
+        input[type="text"] {
+            width: 80%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 1rem;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        
+        #status-box {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 6px;
+            display: none;
+            font-weight: bold;
+        }
+        .success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info { background-color: #e2e3e5; color: #383d41; border: 1px solid #d6d8db; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Secure Identity Verification</h2>
+    <p>Enter your User ID to begin the biometric scan.</p>
+    
+    <input type="text" id="userIdInput" placeholder="e.g., javier_master_01" autocomplete="off">
+    <br>
+    <button id="startBtn" onclick="startSecureLogin()">Start Login</button>
+
+    <div class="video-wrapper">
+        <video id="webcam" autoplay playsinline></video>
+        <div id="instructionOverlay" class="instruction-overlay">Connecting...</div>
+    </div>
+
+    <div id="status-box"></div>
+</div>
+
+<canvas id="hiddenCanvas" style="display:none;"></canvas>
+
+<script>
+    const FPS = 10; 
+    let ws = null;
+    let cameraStream = null;
+    let frameInterval = null;
+
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('hiddenCanvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const instructionOverlay = document.getElementById('instructionOverlay');
+    const statusBox = document.getElementById('status-box');
+    const startBtn = document.getElementById('startBtn');
+    const userIdInput = document.getElementById('userIdInput');
+
+    async function startSecureLogin() {
+        const userId = userIdInput.value.trim();
+        if (!userId) {
+            showStatus("Please enter a User ID.", "error");
+            return;
+        }
+
+        // 1. Reset UI State
+        startBtn.disabled = true;
+        userIdInput.disabled = true;
+        statusBox.style.display = 'none';
+        instructionOverlay.style.display = 'block';
+        instructionOverlay.innerText = "Requesting camera access...";
+
+        try {
+            // 2. Request Webcam Access
+            cameraStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { width: 640, height: 480, facingMode: "user" } 
+            });
+            video.srcObject = cameraStream;
+            
+            // Wait for video to be ready before starting canvas extraction
+            video.onloadedmetadata = () => {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                connectWebSocket(userId);
+            };
+
+        } catch (err) {
+            console.error("Camera error:", err);
+            showStatus("Camera access denied or unavailable.", "error");
+            resetApp();
+        }
+    }
+
+    function connectWebSocket(userId) {
+        instructionOverlay.innerText = "Connecting to Secure Server...";
+        
+        // Ensure this matches your FastAPI server address and port
+        const wsUrl = `ws://localhost:8000/ws/v3/kyc/login/${userId}`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+            console.log("WebSocket connection established.");
+            // 3. Start sending frames to the server at defined FPS
+            frameInterval = setInterval(sendVideoFrame, 1000 / FPS);
+        };
+
+        ws.onmessage = (event) => {
+            const response = JSON.parse(event.data);
+            console.log("Server Message:", response);
+
+            // 4. Handle Server State Machine
+            switch (response.status) {
+                case "challenge_issued":
+                    instructionOverlay.innerText = `Step ${response.step}: ${response.instruction}`;
+                    break;
+                case "info":
+                    instructionOverlay.innerText = response.instruction;
+                    break;
+                case "liveness_passed":
+                    instructionOverlay.innerText = response.message;
+                    break;
+                case "authenticated":
+                    showStatus(`${response.message} (Confidence: ${response.confidence})`, "success");
+                    cleanup();
+                    break;
+                case "rejected":
+                    showStatus(`${response.message} (Confidence: ${response.confidence})`, "error");
+                    cleanup();
+                    break;
+                case "error":
+                    showStatus(response.message, "error");
+                    cleanup();
+                    break;
+            }
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+            showStatus("Connection to server lost.", "error");
+            cleanup();
+        };
+
+        ws.onclose = () => {
+            console.log("WebSocket connection closed.");
+            cleanup();
+        };
+    }
+
+    function sendVideoFrame() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // Draw current video frame to canvas
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Extract base64 JPEG (Quality 0.7 is a good balance of speed and quality)
+        const base64DataUrl = canvas.toDataURL('image/jpeg', 0.7);
+        
+        // Remove the "data:image/jpeg;base64," prefix before sending
+        const base64Payload = base64DataUrl.split(',')[1];
+        
+        ws.send(base64Payload);
+    }
+
+    function showStatus(message, type) {
+        statusBox.className = type;
+        statusBox.innerText = message;
+        statusBox.style.display = 'block';
+    }
+
+    function cleanup() {
+        if (frameInterval) clearInterval(frameInterval);
+        if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+        }
+        instructionOverlay.style.display = 'none';
+        resetApp();
+    }
+
+    function resetApp() {
+        startBtn.disabled = false;
+        userIdInput.disabled = false;
+    }
+</script>
+
+</body>
+</html>

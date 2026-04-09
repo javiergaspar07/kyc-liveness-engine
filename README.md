@@ -2,27 +2,27 @@
 
 A real-time, asynchronous streaming pipeline designed for Know Your Customer (KYC) identity verification. This engine captures webcam feeds via WebSockets, isolates faces using lightweight CPU detection, and runs a deep learning model to detect spoofing attempts (liveness verification) with low latency.
 
-## 🚀 Tech Stack
+## 🛠️ Tech Stack
 
-* **Backend Framework:** FastAPI, Uvicorn (Asynchronous Python)
-* **Communication:** WebSockets
-* **Face Detection (Gatekeeper):** Google MediaPipe (Tasks API)
-* **Liveness Classification:** PyTorch, `timm` (EfficientNet-B0)
-* **Frontend Test Client:** HTML5, JavaScript (Canvas API, MediaDevices)
+* **Backend Framework:** FastAPI (Python), WebSockets, Uvicorn
+* **Computer Vision:** OpenCV, MediaPipe (Face Mesh for Liveness)
+* **Deep Learning:** PyTorch, FaceNet (Inception Resnet V1 for 512D Embeddings)
+* **Database:** PostgreSQL + `pgvector` extension, SQLAlchemy (Async)
+* **Frontend Clients:** Vanilla HTML5, CSS3, JavaScript (Canvas API for frame extraction)
 
 ## ⚙️ Core Architecture & Optimizations
 
-* **Traffic Control (Frame Dropping):** To prevent server overload and memory collapse, the WebSocket processes only 1 out of every 5 incoming frames (approx. 6 FPS). This maintains real-time responsiveness without bottlenecking the GPU.
-* **Two-Phase Pipeline:** 1. **CPU Gatekeeper:** MediaPipe quickly scans the frame. If no face (or multiple faces) are detected, the frame is instantly discarded before reaching the heavy AI model.
-  2. **GPU Inference:** PyTorch processes the strictly cropped and normalized face tensor. The inference is wrapped in `torch.no_grad()` to ensure zero mathematical history is tracked, preventing memory leaks during continuous streaming.
-* **Strict Confidence Threshold:** Enforces a `>= 0.85` Softmax probability threshold to pass the liveness check, prioritizing systemic security against False Positives (spoofs).
-* **Safe Matrix Slicing:** Dynamically bounds bounding box coordinates using `min()` and `max()` functions to guarantee matrix operations never attempt to read out-of-bounds pixels.
-
+* **Zero-Trust Enrollment & Authentication:** Abandons static image payloads (which are vulnerable to injection and replay attacks) in favor of secure WebSockets. Facial extraction *only* occurs after the user proves they are a live human in real-time.
+* **Dynamic 3D Liveness State Machine:** Requires users to pass randomized, multi-step head-pose challenges (Pitch/Yaw/Roll) before granting access.
+* **Mathematically Pure Pose Estimation:** Implements custom coordinate system alignment to correct OpenCV/MediaPipe *Gimbal Lock* mismatch, ensuring highly accurate head pose tracking without relying on arithmetic hacks.
+* **"Sweet Spot" Biometric Capture:** Prevents degraded facial extractions by forcing the user to return to a perfect `(0,0,0)` center pose before capturing the frame for the Deep Learning model.
+* **Vector Search Database:** Utilizes PostgreSQL with `pgvector` to store 512-dimensional facial embeddings safely.
+* **Atomic Transactions:** Protects the database against race conditions and "Database Poisoning" during enrollment.
 ## 🛠️ Installation & Setup
 
 **1. Clone the repository and set up your environment**
 ```bash
-git clone [https://github.com/yourusername/kyc-liveness-engine.git](https://github.com/yourusername/kyc-liveness-engine.git)
+git clone [https://github.com/javiergaspar07/kyc-liveness-engine.git](https://github.com/javiergaspar07/kyc-liveness-engine.git)
 cd kyc-liveness-engine
 
 # It is recommended to use a virtual environment (e.g., Conda or venv)

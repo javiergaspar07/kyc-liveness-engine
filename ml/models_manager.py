@@ -1,3 +1,4 @@
+from facenet_pytorch import InceptionResnetV1
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import timm
@@ -14,7 +15,12 @@ class ModelManager:
 
     def load_models(self):
         print("⏳ [ModelManager] Loading AI models into memory...")
-        loaders = [self.load_face_detector, self.load_face_landmarker, self.load_liveness_model]
+        loaders = [
+            self.load_face_detector,
+            self.load_face_landmarker,
+            self.load_liveness_model,
+            self.load_face_recognizer
+        ]
         for loader in loaders:
             loader()
         print("✅ [ModelManager] AI models loaded into memory...")
@@ -44,14 +50,20 @@ class ModelManager:
         model.eval()
         self.liveness_model = model.to(self.device)
     
+    def load_face_recognizer(self):
+        # pretrained='vggface2' provides highly accurate human face embeddings
+        self.face_recognizer = InceptionResnetV1(pretrained='vggface2').eval().to(self.device)
+    
     def unload_models(self):
         print("🧹 [ModelManager] Freeing models from memory...")
         self.face_landmarker = None
         self.face_detector = None
         self.liveness_model = None
+        self.face_recognizer = None
 
         # Force PyTorch to release unreferenced GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        print("✅ [ModelManager] AI models unloaded.")
 
 ml_manager = ModelManager()
